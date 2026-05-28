@@ -16,7 +16,7 @@
         .status-shared { border-left: 4px solid #f59e0b; opacity: 0.7; } 
         
         /* 链接单行截断样式，类似 Excel */
-        .link-container { flex: 1; min-width: 0; /* 关键属性：防止 flex 子项撑破容器 */ }
+        .link-container { flex: 1; min-width: 0; }
         .link-text { font-size: 14px; font-weight: bold; color: #38bdf8; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
         .info-text { font-size: 12px; color: #94a3b8; }
         
@@ -39,7 +39,7 @@
 <body>
 
     <div class="auth-box" id="authBox">
-        <h2>🔑 专属链接分发台</h2>
+        <h2>🔑 链接分发台</h2>
         <input type="password" id="adminPwd" placeholder="请输入管理员密码">
         <button class="btn-primary" onclick="fetchLinks()">解锁控制台</button>
         <p id="errMsg" style="color: #ef4444; display: none; margin-top: 15px;">密码错误！</p>
@@ -145,7 +145,6 @@
                 const cardClass = item.share_status === '已分享' ? 'status-shared' : 'status-unshared';
                 const fullLink = BASE_URL + item.token;
                 
-                // 设备绑定进度提示
                 let deviceText = `<span style="color:#10b981;">0/${item.max_devices} 台设备</span>`;
                 if(item.used_devices >= item.max_devices) {
                     deviceText = `<span style="color:#ef4444;">设备已满 (${item.used_devices}/${item.max_devices})</span>`;
@@ -163,7 +162,7 @@
                             <button class="btn-copy" onclick="copyToClip('${fullLink}', this)">一键复制</button>
                             <select id="status_${item.token}" onchange="updateStatus('${item.token}')">
                                 <option value="未分享" ${item.share_status === '未分享' ? 'selected' : ''}>🟢 未分享</option>
-                                <option value="已分享" ${item.share_status === '已分享' ? 'selected' : ''}>🟠 已分享</option>
+                                <option value="已分享" ${item.share_status === 'slide-shared' || item.share_status === '已分享' ? 'selected' : ''}>🟠 已分享</option>
                             </select>
                         </div>
                     </div>
@@ -231,6 +230,7 @@
                     if (itemIndex > -1) {
                         allLinksData[itemIndex].share_status = newStatus;
                     }
+                    // 🌟 核心改动：修改状态后仅刷新视图，保持前端列表原有的物理自然位置不被打乱
                     applyFilter(false); 
                 } else {
                     alert('状态保存失败：' + resData.msg);
