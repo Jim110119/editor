@@ -56,7 +56,7 @@
     <div class="pagination" id="paginationTop">
         <button class="page-btn" id="prevBtn" onclick="changePage(-1)">上一页</button>
         <div class="center-controls">
-            <input type="text" id="searchInput" class="search-input" placeholder="🔍 搜索 Token / 车友备注..." oninput="applyFilter(true)">
+            <input type="text" id="searchInput" class="search-input" placeholder="🔍 搜索 Token / 备注..." oninput="applyFilter(true)">
             <div class="tools-row">
                 <select id="statusFilter" class="filter-select" onchange="applyFilter(true)">
                     <option value="全部">全部状态</option>
@@ -181,7 +181,7 @@
                                 <input type="number" id="price_${item.token}" value="${item.price || 0}" onchange="updateInfo('${item.token}')" placeholder="0">
                             </div>
 
-                            <input type="text" id="remark_${item.token}" class="remark-input-small" value="${item.remark || ''}" onchange="updateInfo('${item.token}')" placeholder="📝 添加车友备注...">
+                            <input type="text" id="remark_${item.token}" class="remark-input-small" value="${item.remark || ''}" onchange="updateInfo('${item.token}')" placeholder="📝 添加备注...">
                         </div>
                     </div>
                 `;
