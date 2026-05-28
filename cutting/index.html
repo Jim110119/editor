@@ -167,7 +167,6 @@
             <div class="btn-group">
                 <a href="name.html" target="_blank" class="action-btn btn-admin">👉 高级管理员后台</a>
                 <a href="debug.html" target="_blank" class="action-btn btn-codes">📦 密钥发货控制台</a>
-				<a href="token.html" target="_blank" class="action-btn btn-codes">🔗 安装教程分发台</a>
             </div>
         </div>
         
@@ -353,15 +352,29 @@
                     document.getElementById("uniqueDeviceCount").classList.remove("loading"); 
                 });
 
-            fetch(`${SUPABASE_URL}/rest/v1/rpc/get_total_revenue`, { method: 'POST', headers: headers })
-                .then(res => res.json())
-                .then(revenue => {
-                    animateValue("totalRevenue", 0, revenue || 0, 1500);
-                })
-                .catch(() => { 
-                    document.getElementById("totalRevenue").innerHTML = "0"; 
-                    document.getElementById("totalRevenue").classList.remove("loading"); 
-                });
+            // 🌟 使用 Promise.all 并发请求两个表的营收数据
+            Promise.all([
+                // 1. 请求原有的序列卡密营收
+                fetch(`${SUPABASE_URL}/rest/v1/rpc/get_total_revenue`, { method: 'POST', headers: headers }).then(res => res.json()),
+                // 2. 请求新增的文档链接营收
+                fetch(`${SUPABASE_URL}/rest/v1/rpc/get_links_revenue`, { method: 'POST', headers: headers }).then(res => res.json())
+            ])
+            .then(([codeRevenue, linkRevenue]) => {
+                // 容错处理：确保如果某个表为空或报错，按 0 计算，防止出现 NaN
+                const r1 = typeof codeRevenue === 'number' ? codeRevenue : 0;
+                const r2 = typeof linkRevenue === 'number' ? linkRevenue : 0;
+                
+                // 将两者相加得到终极总营收
+                const finalTotal = r1 + r2;
+                
+                // 触发数据大屏的数字滚动动画
+                animateValue("totalRevenue", 0, finalTotal, 1500);
+            })
+            .catch((err) => { 
+                console.error("营收合并计算失败:", err);
+                document.getElementById("totalRevenue").innerHTML = "0"; 
+                document.getElementById("totalRevenue").classList.remove("loading"); 
+            });
 				
             fetch(`${SUPABASE_URL}/rest/v1/rpc/get_code_stats`, { method: 'POST', headers: headers })
                 .then(res => res.json())
