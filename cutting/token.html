@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>文档分发控制台</title>
+    <title>分发控制台</title>
     <style>
         * { box-sizing: border-box; }
         body { background-color: #0f172a; color: #e2e8f0; font-family: monospace; padding: 15px; margin: 0; padding-bottom: 80px; }
@@ -19,11 +19,16 @@
         .link-text { font-size: 14px; font-weight: bold; color: #38bdf8; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
         .info-text { font-size: 12px; color: #94a3b8; }
         
-        .controls-container { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 120px; }
+        .controls-container { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 130px; }
         .btn-copy { background: #10b981; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; white-space: nowrap; transition: background 0.2s;}
         select { background: #0f172a; color: white; border: 1px solid #475569; padding: 6px; border-radius: 6px; outline: none; width: 100%; font-size: 12px; }
         
-        /* 🌟 新增：完美复刻的备注框样式 */
+        /* 🌟 新增：完美复刻序列中的高颜值绿色数字价格框 */
+        .price-box { display: flex; align-items: center; justify-content: space-between; background: #0f172a; border: 1px solid #475569; border-radius: 6px; padding: 2px 8px; width: 100%; box-sizing: border-box; }
+        .price-box input { background: transparent; border: none; color: #10b981; font-weight: bold; text-align: right; margin: 0; padding: 4px; width: 100%; outline: none; font-size: 13px; }
+        .price-box input::-webkit-outer-spin-button, .price-box input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .price-box input[type=number] { -moz-appearance: textfield; }
+
         .remark-input-small { background: #0f172a; border: 1px solid #475569; color: #94a3b8; padding: 6px; margin-bottom: 0 !important; width: 100%; border-radius: 6px; box-sizing: border-box; font-size: 12px; outline: none; transition: border-color 0.2s, color 0.2s; }
         .remark-input-small:focus { border-color: #38bdf8; color: white; }
         
@@ -51,7 +56,7 @@
     <div class="pagination" id="paginationTop">
         <button class="page-btn" id="prevBtn" onclick="changePage(-1)">上一页</button>
         <div class="center-controls">
-            <input type="text" id="searchInput" class="search-input" placeholder="🔍 搜索 Token / 备注..." oninput="applyFilter(true)">
+            <input type="text" id="searchInput" class="search-input" placeholder="🔍 搜索 Token / 车友备注..." oninput="applyFilter(true)">
             <div class="tools-row">
                 <select id="statusFilter" class="filter-select" onchange="applyFilter(true)">
                     <option value="全部">全部状态</option>
@@ -120,7 +125,6 @@
 
             filteredData = allLinksData.filter(item => {
                 let matchStatus = filterVal === '全部' ? true : (item.share_status === filterVal);
-                // 🌟 新增：搜索过滤逻辑加入 remark 字段的比对
                 let tokenStr = item.token ? item.token.toLowerCase() : '';
                 let remarkStr = item.remark ? item.remark.toLowerCase() : '';
                 let matchSearch = searchKeyword === '' ? true : (tokenStr.includes(searchKeyword) || remarkStr.includes(searchKeyword));
@@ -171,7 +175,13 @@
                                 <option value="未分享" ${item.share_status === '未分享' ? 'selected' : ''}>🟢 未分享</option>
                                 <option value="已分享" ${item.share_status === '已分享' ? 'selected' : ''}>🟠 已分享</option>
                             </select>
-                            <input type="text" id="remark_${item.token}" class="remark-input-small" value="${item.remark || ''}" onchange="updateInfo('${item.token}')" placeholder="📝 添加备注...">
+                            
+                            <div class="price-box">
+                                <span style="font-size:12px; color:#94a3b8;">¥</span>
+                                <input type="number" id="price_${item.token}" value="${item.price || 0}" onchange="updateInfo('${item.token}')" placeholder="0">
+                            </div>
+
+                            <input type="text" id="remark_${item.token}" class="remark-input-small" value="${item.remark || ''}" onchange="updateInfo('${item.token}')" placeholder="📝 添加车友备注...">
                         </div>
                     </div>
                 `;
@@ -219,10 +229,11 @@
             });
         }
 
-        // 🌟 核心更新：统管状态和备注的数据提交
+        // 🌟 核心更新：联合提交状态、备注和售价
         function updateInfo(token) {
             const newStatus = document.getElementById(`status_${token}`).value;
             const newRemark = document.getElementById(`remark_${token}`).value.trim();
+            const newPrice = parseFloat(document.getElementById(`price_${token}`).value) || 0; // 🌟 获取价格数值
 
             fetch(`${SUPABASE_URL}/rest/v1/rpc/update_link_info`, {
                 method: 'POST',
@@ -231,7 +242,8 @@
                     admin_pwd: currentPwd, 
                     p_token: token, 
                     p_status: newStatus,
-                    p_remark: newRemark
+                    p_remark: newRemark,
+                    p_price: newPrice // 🌟 传参发送给 RPC
                 })
             })
             .then(res => res.json())
@@ -241,6 +253,7 @@
                     if (itemIndex > -1) {
                         allLinksData[itemIndex].share_status = newStatus;
                         allLinksData[itemIndex].remark = newRemark;
+                        allLinksData[itemIndex].price = newPrice; // 🌟 内存同步更新
                     }
                     applyFilter(false); 
                 } else {
@@ -249,11 +262,11 @@
             });
         }
 
-        // 🌟 导出功能也加入了备注字段
         function exportToCSV() {
             if (filteredData.length === 0) return alert("⚠️ 无可导出的数据！");
 
-            const headers = ['专属分享链接', 'Token密钥', '分享状态', '备注信息', '已绑设备数', '最大设备限制'];
+            // 🌟 导出表头和字段序列也完美加入了售价
+            const headers = ['专属分享链接', 'Token密钥', '分享状态', '售价(元)', '备注信息', '已绑设备数', '最大设备限制'];
             const escapeCSV = str => '"' + String(str).replace(/"/g, '""') + '"'; 
 
             const rows = filteredData.map(item => {
@@ -261,6 +274,7 @@
                     BASE_URL + item.token,
                     item.token,
                     item.share_status,
+                    item.price || 0, // 🌟 导出价格
                     item.remark,
                     item.used_devices,
                     item.max_devices
