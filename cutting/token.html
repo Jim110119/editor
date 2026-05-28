@@ -15,14 +15,17 @@
         .status-unshared { border-left: 4px solid #10b981; } 
         .status-shared { border-left: 4px solid #f59e0b; opacity: 0.7; } 
         
-        /* 链接单行截断样式，类似 Excel */
         .link-container { flex: 1; min-width: 0; }
         .link-text { font-size: 14px; font-weight: bold; color: #38bdf8; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
         .info-text { font-size: 12px; color: #94a3b8; }
         
-        .controls-container { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 110px; }
+        .controls-container { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 120px; }
         .btn-copy { background: #10b981; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; white-space: nowrap; transition: background 0.2s;}
-        select { background: #0f172a; color: white; border: 1px solid #475569; padding: 8px; border-radius: 6px; outline: none; width: 100%; font-size: 13px; }
+        select { background: #0f172a; color: white; border: 1px solid #475569; padding: 6px; border-radius: 6px; outline: none; width: 100%; font-size: 12px; }
+        
+        /* 🌟 新增：完美复刻的备注框样式 */
+        .remark-input-small { background: #0f172a; border: 1px solid #475569; color: #94a3b8; padding: 6px; margin-bottom: 0 !important; width: 100%; border-radius: 6px; box-sizing: border-box; font-size: 12px; outline: none; transition: border-color 0.2s, color 0.2s; }
+        .remark-input-small:focus { border-color: #38bdf8; color: white; }
         
         .pagination { display: none; justify-content: space-between; align-items: center; background: #1e293b; padding: 12px 10px; border-radius: 10px; border: 1px solid #334155; margin-bottom: 15px; position: sticky; top: 10px; z-index: 100; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5); }
         .page-btn { background: #334155; color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 12px; }
@@ -48,7 +51,7 @@
     <div class="pagination" id="paginationTop">
         <button class="page-btn" id="prevBtn" onclick="changePage(-1)">上一页</button>
         <div class="center-controls">
-            <input type="text" id="searchInput" class="search-input" placeholder="🔍 搜索 Token..." oninput="applyFilter(true)">
+            <input type="text" id="searchInput" class="search-input" placeholder="🔍 搜索 Token / 车友备注..." oninput="applyFilter(true)">
             <div class="tools-row">
                 <select id="statusFilter" class="filter-select" onchange="applyFilter(true)">
                     <option value="全部">全部状态</option>
@@ -76,7 +79,7 @@
         let allLinksData = [];
         let filteredData = [];
         let currentPage = 1;     
-        const pageSize = 200; // 一页展示200条
+        const pageSize = 200; 
 
         function fetchLinks() {
             currentPwd = document.getElementById('adminPwd').value.trim();
@@ -117,7 +120,11 @@
 
             filteredData = allLinksData.filter(item => {
                 let matchStatus = filterVal === '全部' ? true : (item.share_status === filterVal);
-                let matchSearch = searchKeyword === '' ? true : (item.token.toLowerCase().includes(searchKeyword));
+                // 🌟 新增：搜索过滤逻辑加入 remark 字段的比对
+                let tokenStr = item.token ? item.token.toLowerCase() : '';
+                let remarkStr = item.remark ? item.remark.toLowerCase() : '';
+                let matchSearch = searchKeyword === '' ? true : (tokenStr.includes(searchKeyword) || remarkStr.includes(searchKeyword));
+                
                 return matchStatus && matchSearch;
             });
 
@@ -160,10 +167,11 @@
                         </div>
                         <div class="controls-container">
                             <button class="btn-copy" onclick="copyToClip('${fullLink}', this)">一键复制</button>
-                            <select id="status_${item.token}" onchange="updateStatus('${item.token}')">
+                            <select id="status_${item.token}" onchange="updateInfo('${item.token}')">
                                 <option value="未分享" ${item.share_status === '未分享' ? 'selected' : ''}>🟢 未分享</option>
-                                <option value="已分享" ${item.share_status === 'slide-shared' || item.share_status === '已分享' ? 'selected' : ''}>🟠 已分享</option>
+                                <option value="已分享" ${item.share_status === '已分享' ? 'selected' : ''}>🟠 已分享</option>
                             </select>
+                            <input type="text" id="remark_${item.token}" class="remark-input-small" value="${item.remark || ''}" onchange="updateInfo('${item.token}')" placeholder="📝 添加车友备注...">
                         </div>
                     </div>
                 `;
@@ -211,16 +219,19 @@
             });
         }
 
-        function updateStatus(token) {
+        // 🌟 核心更新：统管状态和备注的数据提交
+        function updateInfo(token) {
             const newStatus = document.getElementById(`status_${token}`).value;
+            const newRemark = document.getElementById(`remark_${token}`).value.trim();
 
-            fetch(`${SUPABASE_URL}/rest/v1/rpc/update_link_status`, {
+            fetch(`${SUPABASE_URL}/rest/v1/rpc/update_link_info`, {
                 method: 'POST',
                 headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     admin_pwd: currentPwd, 
                     p_token: token, 
-                    p_status: newStatus 
+                    p_status: newStatus,
+                    p_remark: newRemark
                 })
             })
             .then(res => res.json())
@@ -229,19 +240,20 @@
                     const itemIndex = allLinksData.findIndex(i => i.token === token);
                     if (itemIndex > -1) {
                         allLinksData[itemIndex].share_status = newStatus;
+                        allLinksData[itemIndex].remark = newRemark;
                     }
-                    // 🌟 核心改动：修改状态后仅刷新视图，保持前端列表原有的物理自然位置不被打乱
                     applyFilter(false); 
                 } else {
-                    alert('状态保存失败：' + resData.msg);
+                    alert('保存失败：' + resData.msg);
                 }
             });
         }
 
+        // 🌟 导出功能也加入了备注字段
         function exportToCSV() {
             if (filteredData.length === 0) return alert("⚠️ 无可导出的数据！");
 
-            const headers = ['专属分享链接', 'Token密钥', '分享状态', '已绑设备数', '最大设备限制'];
+            const headers = ['专属分享链接', 'Token密钥', '分享状态', '备注信息', '已绑设备数', '最大设备限制'];
             const escapeCSV = str => '"' + String(str).replace(/"/g, '""') + '"'; 
 
             const rows = filteredData.map(item => {
@@ -249,6 +261,7 @@
                     BASE_URL + item.token,
                     item.token,
                     item.share_status,
+                    item.remark,
                     item.used_devices,
                     item.max_devices
                 ].map(escapeCSV).join(',');
