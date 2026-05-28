@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>文档分发控制台</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { background-color: #0f172a; color: #e2e8f0; font-family: monospace; padding: 15px; margin: 0; padding-bottom: 80px; }
+        .auth-box { text-align: center; margin-top: 50px; }
+        input[type="password"], .search-input { padding: 12px; border-radius: 8px; border: 1px solid #38bdf8; background: #1e293b; color: white; width: 80%; max-width: 300px; font-size: 16px; margin-bottom: 15px; outline: none; }
+        button.btn-primary { padding: 12px 20px; border-radius: 8px; border: none; background: #0ea5e9; color: white; cursor: pointer; font-weight: bold; font-size: 16px; width: 80%; max-width: 300px; }
+        
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 15px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+        .status-unshared { border-left: 4px solid #10b981; } 
+        .status-shared { border-left: 4px solid #f59e0b; opacity: 0.7; } 
+        
+        /* 链接单行截断样式，类似 Excel */
+        .link-container { flex: 1; min-width: 0; /* 关键属性：防止 flex 子项撑破容器 */ }
+        .link-text { font-size: 14px; font-weight: bold; color: #38bdf8; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+        .info-text { font-size: 12px; color: #94a3b8; }
+        
+        .controls-container { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 110px; }
+        .btn-copy { background: #10b981; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; white-space: nowrap; transition: background 0.2s;}
+        select { background: #0f172a; color: white; border: 1px solid #475569; padding: 8px; border-radius: 6px; outline: none; width: 100%; font-size: 13px; }
+        
+        .pagination { display: none; justify-content: space-between; align-items: center; background: #1e293b; padding: 12px 10px; border-radius: 10px; border: 1px solid #334155; margin-bottom: 15px; position: sticky; top: 10px; z-index: 100; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5); }
+        .page-btn { background: #334155; color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 12px; }
+        .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .center-controls { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; padding: 0 10px;}
+        .tools-row { display: flex; gap: 8px; width: 100%; justify-content: center;}
+        
+        .jump-input { width: 45px !important; padding: 4px !important; font-size: 14px !important; text-align: center; border-radius: 6px !important; margin: 0 !important; background: #0f172a !important; color: #38bdf8 !important; border: 1px solid #38bdf8 !important; }
+        .filter-select { padding: 6px 8px; font-size: 13px; border-radius: 6px; border: 1px solid #38bdf8; width: auto;}
+        .search-input { width: 100% !important; max-width: 100%; padding: 6px 8px !important; font-size: 13px !important; margin: 0 !important; text-align: center; }
+        .btn-export { background: #10b981; padding: 6px 12px; border-radius: 6px; border: none; color: white; cursor: pointer; font-weight: bold; font-size: 12px; white-space: nowrap; }
+    </style>
+</head>
+<body>
+
+    <div class="auth-box" id="authBox">
+        <h2>🔑 专属链接分发台</h2>
+        <input type="password" id="adminPwd" placeholder="请输入管理员密码">
+        <button class="btn-primary" onclick="fetchLinks()">解锁控制台</button>
+        <p id="errMsg" style="color: #ef4444; display: none; margin-top: 15px;">密码错误！</p>
+    </div>
+
+    <div class="pagination" id="paginationTop">
+        <button class="page-btn" id="prevBtn" onclick="changePage(-1)">上一页</button>
+        <div class="center-controls">
+            <input type="text" id="searchInput" class="search-input" placeholder="🔍 搜索 Token..." oninput="applyFilter(true)">
+            <div class="tools-row">
+                <select id="statusFilter" class="filter-select" onchange="applyFilter(true)">
+                    <option value="全部">全部状态</option>
+                    <option value="未分享">🟢 仅看未分享</option>
+                    <option value="已分享">🟠 仅看已分享</option>
+                </select>
+                <div style="display: flex; align-items: center; color: #38bdf8; font-weight: bold; font-size: 14px;">
+                    <input type="number" id="jumpInput" class="jump-input" onchange="jumpToPage()">
+                    <span id="totalPagesText" style="margin-left: 4px;">/ 1</span>
+                </div>
+                <button class="btn-export" onclick="exportToCSV()">📥 导出</button>
+            </div>
+        </div>
+        <button class="page-btn" id="nextBtn" onclick="changePage(1)">下一页</button>
+    </div>
+
+    <div id="linksContainer" style="display: none;"></div>
+
+    <script>
+        const SUPABASE_URL = 'https://clefvejumahurbbzdwbe.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNsZWZ2ZWp1bWFodXJiYnpkd2JlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwMzE0MzIsImV4cCI6MjA4ODYwNzQzMn0.KB_WSUNRfmZ7Kvps8Gpvr1EESmX25d3t7TeZrP4kdEo';
+        const BASE_URL = 'https://jim110119.github.io/lrcoverlay/guidance?token=';
+        
+        let currentPwd = '';
+        let allLinksData = [];
+        let filteredData = [];
+        let currentPage = 1;     
+        const pageSize = 200; // 一页展示200条
+
+        function fetchLinks() {
+            currentPwd = document.getElementById('adminPwd').value.trim();
+            const btn = document.querySelector('.btn-primary');
+            btn.innerText = "加载中,请稍候..."; 
+            btn.disabled = true;
+
+            fetch(`${SUPABASE_URL}/rest/v1/rpc/get_admin_links`, {
+                method: 'POST',
+                headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ admin_pwd: currentPwd })
+            })
+            .then(res => res.json())
+            .then(resData => {
+                btn.innerText = "解锁控制台";
+                btn.disabled = false;
+
+                if (resData.success) {
+                    document.getElementById('authBox').style.display = 'none';
+                    document.getElementById('paginationTop').style.display = 'flex';
+                    allLinksData = resData.data; 
+                    applyFilter(true); 
+                } else {
+                    document.getElementById('errMsg').style.display = 'block';
+                    document.getElementById('errMsg').innerText = resData.msg || "请求失败";
+                }
+            })
+            .catch(err => {
+                btn.innerText = "解锁控制台";
+                btn.disabled = false;
+                alert("请求异常: " + err);
+            });
+        }
+
+        function applyFilter(resetPage) {
+            const filterVal = document.getElementById('statusFilter').value;
+            const searchKeyword = document.getElementById('searchInput').value.trim().toLowerCase();
+
+            filteredData = allLinksData.filter(item => {
+                let matchStatus = filterVal === '全部' ? true : (item.share_status === filterVal);
+                let matchSearch = searchKeyword === '' ? true : (item.token.toLowerCase().includes(searchKeyword));
+                return matchStatus && matchSearch;
+            });
+
+            if (resetPage) currentPage = 1;
+            renderPage();
+        }
+
+        function renderPage() {
+            const container = document.getElementById('linksContainer');
+            container.style.display = 'block';
+            
+            const totalPages = Math.ceil(filteredData.length / pageSize) || 1;
+            if (currentPage > totalPages) currentPage = totalPages;
+            
+            const startIndex = (currentPage - 1) * pageSize;
+            const currentPageData = filteredData.slice(startIndex, startIndex + pageSize);
+
+            document.getElementById('jumpInput').value = currentPage;
+            document.getElementById('totalPagesText').innerText = `/ ${totalPages}`;
+            document.getElementById('prevBtn').disabled = (currentPage === 1);
+            document.getElementById('nextBtn').disabled = (currentPage === totalPages);
+
+            let htmlString = '';
+            currentPageData.forEach(item => {
+                const cardClass = item.share_status === '已分享' ? 'status-shared' : 'status-unshared';
+                const fullLink = BASE_URL + item.token;
+                
+                // 设备绑定进度提示
+                let deviceText = `<span style="color:#10b981;">0/${item.max_devices} 台设备</span>`;
+                if(item.used_devices >= item.max_devices) {
+                    deviceText = `<span style="color:#ef4444;">设备已满 (${item.used_devices}/${item.max_devices})</span>`;
+                } else if(item.used_devices > 0) {
+                    deviceText = `<span style="color:#f59e0b;">已绑 ${item.used_devices}/${item.max_devices} 台</span>`;
+                }
+                
+                htmlString += `
+                    <div class="card ${cardClass}">
+                        <div class="link-container">
+                            <div class="link-text" title="${fullLink}" onclick="copyToClip('${fullLink}')">${fullLink}</div>
+                            <div class="info-text">密钥: ${item.token} &nbsp;|&nbsp; 授权: ${deviceText}</div>
+                        </div>
+                        <div class="controls-container">
+                            <button class="btn-copy" onclick="copyToClip('${fullLink}', this)">一键复制</button>
+                            <select id="status_${item.token}" onchange="updateStatus('${item.token}')">
+                                <option value="未分享" ${item.share_status === '未分享' ? 'selected' : ''}>🟢 未分享</option>
+                                <option value="已分享" ${item.share_status === '已分享' ? 'selected' : ''}>🟠 已分享</option>
+                            </select>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            if (filteredData.length === 0) {
+                htmlString = '<div style="text-align:center; margin-top:50px; color:#94a3b8;">无数据</div>';
+            }
+            container.innerHTML = htmlString;
+        }
+
+        function changePage(delta) {
+            const totalPages = Math.ceil(filteredData.length / pageSize);
+            currentPage += delta;
+            if (currentPage < 1) currentPage = 1;
+            if (currentPage > totalPages) currentPage = totalPages;
+            renderPage();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function jumpToPage() {
+            const inputVal = parseInt(document.getElementById('jumpInput').value);
+            const totalPages = Math.ceil(filteredData.length / pageSize) || 1;
+            if (inputVal >= 1 && inputVal <= totalPages) {
+                currentPage = inputVal;
+                renderPage();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+                document.getElementById('jumpInput').value = currentPage;
+            }
+        }
+
+        function copyToClip(link, btnElement = null) {
+            navigator.clipboard.writeText(link).then(() => {
+                if(btnElement) {
+                    btnElement.innerText = '✅ 已复制';
+                    btnElement.style.background = '#3b82f6';
+                    setTimeout(() => {
+                        btnElement.innerText = '一键复制';
+                        btnElement.style.background = '#10b981';
+                    }, 2000);
+                } else {
+                    alert('✅ 链接已复制到剪贴板！');
+                }
+            });
+        }
+
+        function updateStatus(token) {
+            const newStatus = document.getElementById(`status_${token}`).value;
+
+            fetch(`${SUPABASE_URL}/rest/v1/rpc/update_link_status`, {
+                method: 'POST',
+                headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    admin_pwd: currentPwd, 
+                    p_token: token, 
+                    p_status: newStatus 
+                })
+            })
+            .then(res => res.json())
+            .then(resData => {
+                if(resData.success) {
+                    const itemIndex = allLinksData.findIndex(i => i.token === token);
+                    if (itemIndex > -1) {
+                        allLinksData[itemIndex].share_status = newStatus;
+                    }
+                    applyFilter(false); 
+                } else {
+                    alert('状态保存失败：' + resData.msg);
+                }
+            });
+        }
+
+        function exportToCSV() {
+            if (filteredData.length === 0) return alert("⚠️ 无可导出的数据！");
+
+            const headers = ['专属分享链接', 'Token密钥', '分享状态', '已绑设备数', '最大设备限制'];
+            const escapeCSV = str => '"' + String(str).replace(/"/g, '""') + '"'; 
+
+            const rows = filteredData.map(item => {
+                return [
+                    BASE_URL + item.token,
+                    item.token,
+                    item.share_status,
+                    item.used_devices,
+                    item.max_devices
+                ].map(escapeCSV).join(',');
+            });
+
+            const csvContent = "\uFEFF" + headers.map(escapeCSV).join(',') + "\n" + rows.join("\n");
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `文档分发报表_${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
